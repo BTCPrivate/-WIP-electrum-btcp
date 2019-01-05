@@ -83,8 +83,10 @@ class ElectrumWindow(App):
     num_chains = NumericProperty(0)
     blockchain_name = StringProperty('')
     fee_status = StringProperty('Fee')
+    balance = StringProperty('')
+    fiat_balance = StringProperty('')
+    is_fiat = BooleanProperty(False)
     blockchain_checkpoint = NumericProperty(0)
-    _fee_dialog = None
 
     auto_connect = BooleanProperty(False)
     def on_auto_connect(self, instance, x):
@@ -97,8 +99,8 @@ class ElectrumWindow(App):
         from .uix.dialogs.choice_dialog import ChoiceDialog
         protocol = 's'
         def cb2(host):
-            from electrum.bitcoin import NetworkConstants
-            pp = servers.get(host, NetworkConstants.DEFAULT_PORTS)
+            from electrum import constants
+            pp = servers.get(host, constants.net.DEFAULT_PORTS)
             port = pp.get(protocol, '')
             popup.ids.host.text = host
             popup.ids.port.text = port
@@ -177,8 +179,10 @@ class ElectrumWindow(App):
     def btc_to_fiat(self, amount_str):
         if not amount_str:
             return ''
+        if not self.fx.is_enabled():
+            return ''
         rate = self.fx.exchange_rate()
-        if not rate:
+        if rate.is_nan():
             return ''
         fiat_amount = self.get_amount(amount_str + ' ' + self.base_unit) * rate / pow(10, 8)
         return "{:.2f}".format(fiat_amount).rstrip('0').rstrip('.')
@@ -187,7 +191,7 @@ class ElectrumWindow(App):
         if not fiat_amount:
             return ''
         rate = self.fx.exchange_rate()
-        if not rate:
+        if rate.is_nan():
             return ''
         satoshis = int(pow(10,8) * Decimal(fiat_amount) / Decimal(rate))
         return format_satoshis_plain(satoshis, self.decimal_point())
@@ -635,17 +639,17 @@ class ElectrumWindow(App):
             if not self.wallet.up_to_date or server_height == 0:
                 status = _("Synchronizing...")
             elif server_lag > 1:
-                status = _("Server lagging ({} blocks)").format(server_lag)
+                status = _("Server lagging")
             else:
-                c, u, x = self.wallet.get_balance()
-                text = self.format_amount(c+x+u)
-                status = str(text.strip() + ' ' + self.base_unit)
+                status = ''
         else:
             status = _("Disconnected")
-
-        n = self.wallet.basename()
-        self.status = '[size=15dp]%s[/size]\n%s' %(n, status)
-        #fiat_balance = self.fx.format_amount_and_units(c+u+x) or ''
+        self.status = self.wallet.basename() + (' [size=15dp](%s)[/size]'%status if status else '')
+        # balance
+        c, u, x = self.wallet.get_balance()
+        text = self.format_amount(c+x+u)
+        self.balance = str(text.strip()) + ' [size=22dp]%s[/size]'% self.base_unit
+        self.fiat_balance = self.fx.format_amount(c+u+x) + ' [size=22dp]%s[/size]'% self.fx.ccy
 
     def get_max_amount(self):
         inputs = self.wallet.get_spendable_coins(None, self.electrum_config)
@@ -833,13 +837,11 @@ class ElectrumWindow(App):
         popup.open()
 
     def fee_dialog(self, label, dt):
-        if self._fee_dialog is None:
-            from .uix.dialogs.fee_dialog import FeeDialog
-            def cb():
-                c = self.electrum_config
-                self.fee_status = c.get_fee_status()
-            self._fee_dialog = FeeDialog(self, self.electrum_config, cb)
-        self._fee_dialog.open()
+        from .uix.dialogs.fee_dialog import FeeDialog
+        def cb():
+            self.fee_status = self.electrum_config.get_fee_status()
+        fee_dialog = FeeDialog(self, self.electrum_config, cb)
+        fee_dialog.open()
 
     def on_fee(self, event, *arg):
         self.fee_status = self.electrum_config.get_fee_status()

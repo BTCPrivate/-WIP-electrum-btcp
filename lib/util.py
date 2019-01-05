@@ -29,7 +29,6 @@ import traceback
 import urllib
 import threading
 import hmac
-import requests
 
 from .i18n import _
 
@@ -73,6 +72,16 @@ class FileExportFailed(Exception):
 
     def __str__(self):
         return _("Failed to export to file.") + "\n" + self.message
+
+
+class TimeoutException(Exception):
+    def __init__(self, message=''):
+        self.message = str(message)
+
+    def __str__(self):
+        if not self.message:
+            return _("Operation timed out.")
+        return self.message
 
 
 # Throw this exception to unwind the stack like when an error occurs.
@@ -484,15 +493,11 @@ def time_difference(distance_in_time, include_seconds):
 
 # For raw json, append /insight-api-zcash
 mainnet_block_explorers = {
-    'zcl-explorer.com': ('https://zcl-explorer.com/',
-                        {'tx': 'tx/', 'addr': 'address/'}),
-    'eu1.zcl-explorer.com': ('https://eu1.zcl-explorer.com',
+    'zclbex.duckdns.org:3001': ('http://zclbex.duckdns.org:3001',
                         {'tx': 'tx', 'addr': 'address'}),
-    'as1.zcl-explorer.com': ('https://as1.zcl-explorer.com',
+    'zclassic-ce.io': ('http://zclassic-ce.io',
                         {'tx': 'tx', 'addr': 'address'}),
     'explorer.zclassic.org': ('https://explorer.zclassic.org',
-                        {'tx': 'tx', 'addr': 'address'}),
-    'zclzclzcl.com': ('https://zclzclzcl.com',
                         {'tx': 'tx', 'addr': 'address'}),
 }
 
@@ -511,11 +516,11 @@ testnet_block_explorers = {
 }
 
 def block_explorer_info():
-    from . import bitcoin
-    return testnet_block_explorers if bitcoin.NetworkConstants.TESTNET else mainnet_block_explorers
+    from . import constants
+    return testnet_block_explorers if constants.net.TESTNET else mainnet_block_explorers
 
 def block_explorer(config):
-    return config.get('block_explorer', 'zcl-explorer.com')
+    return config.get('block_explorer', 'zclassic-ce.io')
 
 def block_explorer_tuple(config):
     return block_explorer_info().get(block_explorer(config))

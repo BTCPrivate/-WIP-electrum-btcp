@@ -40,7 +40,8 @@ from .exception_window import Exception_Hook
 from PyQt5.QtWidgets import *
 
 from electrum import keystore, simple_config
-from electrum.bitcoin import COIN, is_address, TYPE_ADDRESS, NetworkConstants
+from electrum.bitcoin import COIN, is_address, TYPE_ADDRESS
+from electrum import constants
 from electrum.plugins import run_hook
 from electrum.i18n import _
 from electrum.util import (format_time, format_satoshis, PrintError,
@@ -374,7 +375,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.setGeometry(100, 100, 840, 400)
 
     def watching_only_changed(self):
-        name = "[TESTNET] Zclassic Electrum" if NetworkConstants.TESTNET else "Zclassic Electrum"
+        name = "[TESTNET] Zclassic Electrum" if constants.net.TESTNET else "Zclassic Electrum"
         title = '%s %s  -  %s' % (name, self.wallet.electrum_version,
                                         self.wallet.basename())
         extra = [self.wallet.storage.get('wallet_type', '?')]
@@ -535,10 +536,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         help_menu.addAction(_("&About"), self.show_about)
         help_menu.addAction(_("&Official website"), lambda: webbrowser.open("https://zclassic.org"))
         help_menu.addSeparator()
-        help_menu.addAction(_("&Documentation"), lambda: webbrowser.open("https://github.com/BTCP-community/electrum-zcl/")).setShortcut(QKeySequence.HelpContents)
+        help_menu.addAction(_("&Documentation"), lambda: webbrowser.open("https://github.com/z-classic/electrum-zcl/")).setShortcut(QKeySequence.HelpContents)
         help_menu.addAction(_("&Report Bug"), self.show_report_bug)
         help_menu.addSeparator()
-        help_menu.addAction(_("&Donate to server"), self.donate_to_server)
+        help_menu.addAction(_("Donate to &Zclassic"), self.donate_to_zcl)
+        help_menu.addAction(_("Donate to &server"), self.donate_to_server)
 
         self.setMenuBar(menubar)
 
@@ -550,6 +552,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         else:
             self.show_error(_('No donation address for this server'))
 
+    def donate_to_zcl(self):
+        d = "t3eYEnoMmfUV65CZvPvV2mfAUnfFGoFbkJu"
+        host = ""
+        self.pay_to_URI('bitcoin:%s?message=support for Zclassic infrastructure and development %s'%(d, host))
+
     def show_about(self):
         QMessageBox.about(self, "Zclassic Electrum",
             _("Version")+" %s" % (self.wallet.electrum_version) + "\n\n" +
@@ -559,7 +566,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
     def show_report_bug(self):
         msg = ' '.join([
             _("Please report any bugs as issues on github:<br/>"),
-            "<a href=\"https://github.com/BTCP-community/electrum-zcl/issues\">https://github.com/BTCP-community/electrum-zcl/issues</a><br/><br/>",
+            "<a href=\"https://github.com/z-classic/electrum-zcl/issues\">https://github.com/z-classic/electrum-zcl/issues</a><br/><br/>",
             _("Before reporting a bug, upgrade to the most recent version of Electrum-ZCL (latest release or git HEAD), and include the version number in your report."),
             _("Try to explain not only what the bug is, but how it occurs.")
          ])
@@ -812,7 +819,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             _('Expiration date of your request.'),
             _('This information is seen by the recipient if you send them a signed payment request.'),
             _('Expired requests have to be deleted manually from your list, in order to free the corresponding Zclassic addresses.'),
-            _('The bitcoin address never expires and will always be part of this electrum wallet.'),
+            _('The Zclassic address never expires and will always be part of this electrum wallet.'),
         ])
         grid.addWidget(HelpLabel(_('Request expires'), msg), 3, 0)
         grid.addWidget(self.expires_combo, 3, 1)
@@ -1331,8 +1338,13 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             # actual fees often differ somewhat.
             if freeze_feerate or self.fee_slider.is_active():
                 displayed_feerate = self.feerate_e.get_amount()
-                displayed_feerate = displayed_feerate // 1000 if displayed_feerate else 0
-                displayed_fee = displayed_feerate * size
+                if displayed_feerate:
+                    displayed_feerate = displayed_feerate // 1000
+                else:
+                    # fallback to actual fee
+                    displayed_feerate = fee // size if fee is not None else None
+                    self.feerate_e.setAmount(displayed_feerate)
+                displayed_fee = displayed_feerate * size if displayed_feerate is not None else None
                 self.fee_e.setAmount(displayed_fee)
             else:
                 if freeze_fee:
@@ -1446,7 +1458,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         else:
             errors = self.payto_e.get_errors()
             if errors:
-                self.show_warning(_("Invalid lines found:") + "\n\n" + '\n'.join([ _("Line #") + str(x[0]+1) + ": " + x[1] for x in errors]))
+                self.show_warning(_("Invalid Lines found:") + "\n\n" + '\n'.join([ _("Line #") + str(x[0]+1) + ": " + x[1] for x in errors]))
                 return
             outputs = self.payto_e.get_outputs(self.is_max)
 
@@ -2628,22 +2640,23 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         )
         fee_type_label = HelpLabel(_('Fee estimation') + ':', msg)
         fee_type_combo = QComboBox()
-        fee_type_combo.addItems([_('Time based'), _('Mempool based')])
-        fee_type_combo.setCurrentIndex(1 if self.config.use_mempool_fees() else 0)
+        fee_type_combo.addItems([_('Static'), _('ETA'), _('Mempool')])
+        fee_type_combo.setCurrentIndex((2 if self.config.use_mempool_fees() else 1) if self.config.is_dynfee() else 0)
         def on_fee_type(x):
-            self.config.set_key('mempool_fees', x==1)
+            self.config.set_key('mempool_fees', x==2)
+            self.config.set_key('dynamic_fees', x>0)
             self.fee_slider.update()
         fee_type_combo.currentIndexChanged.connect(on_fee_type)
         fee_widgets.append((fee_type_label, fee_type_combo))
 
-        def on_dynfee(x):
-            self.config.set_key('dynamic_fees', x == Qt.Checked)
-            self.fee_slider.update()
-        dynfee_cb = QCheckBox(_('Use dynamic fees'))
-        dynfee_cb.setChecked(self.config.is_dynfee())
-        dynfee_cb.setToolTip(_("Use fees recommended by the server."))
-        fee_widgets.append((dynfee_cb, None))
-        dynfee_cb.stateChanged.connect(on_dynfee)
+        feebox_cb = QCheckBox(_('Edit fees manually'))
+        feebox_cb.setChecked(self.config.get('show_fee', False))
+        feebox_cb.setToolTip(_("Show fee edit box in send tab."))
+        def on_feebox(x):
+            self.config.set_key('show_fee', x == Qt.Checked)
+            self.fee_adv_controls.setVisible(bool(x))
+        feebox_cb.stateChanged.connect(on_feebox)
+        fee_widgets.append((feebox_cb, None))
 
         use_rbf_cb = QCheckBox(_('Use Replace-By-Fee'))
         use_rbf_cb.setChecked(self.config.get('use_rbf', True))
@@ -2740,8 +2753,8 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         gui_widgets.append((unit_label, unit_combo))
 
         block_explorers = sorted(util.block_explorer_info().keys())
-        msg = _('Choose which block explorer to use for transaction info')
-        block_ex_label = HelpLabel(_('Block Explorer') + ':', msg)
+        msg = _('Choose which online block explorer to use for functions that open a web browser')
+        block_ex_label = HelpLabel(_('Online Block Explorer') + ':', msg)
         block_ex_combo = QComboBox()
         block_ex_combo.addItems(block_explorers)
         block_ex_combo.setCurrentIndex(block_ex_combo.findText(util.block_explorer(self.config)))
@@ -2833,13 +2846,14 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         outrounding_cb.setToolTip(
             _('Set the value of the change output so that it has similar precision to the other outputs.') + '\n' +
             _('This might improve your privacy somewhat.') + '\n' +
-            _('If enabled, at most 100 satoshis might be lost due to this, per transaction.'))
+            _('If enabled, at most 100 zatoshis might be lost due to this, per transaction.'))
         outrounding_cb.setChecked(enable_outrounding)
         outrounding_cb.stateChanged.connect(on_outrounding)
         tx_widgets.append((outrounding_cb, None))
 
         # Fiat Currency
         hist_checkbox = QCheckBox()
+        hist_capgains_checkbox = QCheckBox()
         fiat_address_checkbox = QCheckBox()
         ccy_combo = QComboBox()
         ex_combo = QComboBox()
@@ -2860,6 +2874,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
         def update_fiat_address_cb():
             if not self.fx: return
             fiat_address_checkbox.setChecked(self.fx.get_fiat_address_config())
+
+        def update_history_capgains_cb():
+            if not self.fx: return
+            hist_capgains_checkbox.setChecked(self.fx.get_history_capital_gains_config())
+            hist_capgains_checkbox.setEnabled(hist_checkbox.isChecked())
 
         def update_exchanges():
             if not self.fx: return
@@ -2899,6 +2918,12 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             if self.fx.is_enabled() and checked:
                 # reset timeout to get historical rates
                 self.fx.timeout = 0
+            update_history_capgains_cb()
+
+        def on_history_capgains(checked):
+            if not self.fx: return
+            self.fx.set_history_capital_gains_config(checked)
+            self.history_list.refresh_headers()
 
         def on_fiat_address(checked):
             if not self.fx: return
@@ -2908,16 +2933,19 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
 
         update_currencies()
         update_history_cb()
+        update_history_capgains_cb()
         update_fiat_address_cb()
         update_exchanges()
         ccy_combo.currentIndexChanged.connect(on_currency)
         hist_checkbox.stateChanged.connect(on_history)
+        hist_capgains_checkbox.stateChanged.connect(on_history_capgains)
         fiat_address_checkbox.stateChanged.connect(on_fiat_address)
         ex_combo.currentIndexChanged.connect(on_exchange)
 
         fiat_widgets = []
         fiat_widgets.append((QLabel(_('Fiat currency')), ccy_combo))
         fiat_widgets.append((QLabel(_('Show history rates')), hist_checkbox))
+        fiat_widgets.append((QLabel(_('Show capital gains in history')), hist_capgains_checkbox))
         fiat_widgets.append((QLabel(_('Show Fiat balance for addresses')), fiat_address_checkbox))
         fiat_widgets.append((QLabel(_('Source')), ex_combo))
 
@@ -3151,7 +3179,7 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             self.wallet.save_transactions(write=True)
             # need to update at least: history_list, utxo_list, address_list
             self.need_update.set()
-            self.msg_box(QPixmap(":icons/offline_tx.png"), None, _('Success'), _("Transaction saved successfully"))
+            self.msg_box(QPixmap(":icons/offline_tx.png"), None, _('Success'), _("Transaction added to wallet history"))
             return True
 
 

@@ -19,11 +19,11 @@ from .util import PrintError, ThreadJob
 CCY_PRECISIONS = {}
 '''
 {'BHD': 3, 'BIF': 0, 'BYR': 0, 'CLF': 4, 'CLP': 0,
-'CVE': 0, 'DJF': 0, 'GNF': 0, 'IQD': 3, 'ISK': 0,
-'JOD': 3, 'JPY': 0, 'KMF': 0, 'KRW': 0, 'KWD': 3,
-'LYD': 3, 'MGA': 1, 'MRO': 1, 'OMR': 3, 'PYG': 0,
-'RWF': 0, 'TND': 3, 'UGX': 0, 'UYI': 0, 'VND': 0,
-'VUV': 0, 'XAF': 0, 'XAU': 4, 'XOF': 0, 'XPF': 0}
+ 'CVE': 0, 'DJF': 0, 'GNF': 0, 'IQD': 3, 'ISK': 0,
+ 'JOD': 3, 'JPY': 0, 'KMF': 0, 'KRW': 0, 'KWD': 3,
+ 'LYD': 3, 'MGA': 1, 'MRO': 1, 'OMR': 3, 'PYG': 0,
+ 'RWF': 0, 'TND': 3, 'UGX': 0, 'UYI': 0, 'VND': 0,
+ 'VUV': 0, 'XAF': 0, 'XAU': 4, 'XOF': 0, 'XPF': 0}
 '''
 
 class ExchangeBase(PrintError):
@@ -116,6 +116,12 @@ class ExchangeBase(PrintError):
         rates = self.get_rates('')
         return sorted([str(a) for (a, b) in rates.items() if b is not None and len(a) in [3,4]])
 
+
+class CryptoCompare(ExchangeBase):
+    def get_rates(self, ccy):
+        json = self.get_json('min-api.cryptocompare.com',
+                             "/data/pricehistorical?fsym=ZCL&tsyms=USD")
+        return {'USD': Decimal(json['ZCL']['USD'])}
 
 class CoinMarketCap(ExchangeBase):
     def get_rates(self, ccy):
@@ -229,6 +235,12 @@ class FxThread(ThreadJob):
     def set_history_config(self, b):
         self.config.set_key('history_rates', bool(b))
 
+    def get_history_capital_gains_config(self):
+        return bool(self.config.get('history_rates_capital_gains', False))
+
+    def set_history_capital_gains_config(self, b):
+        self.config.set_key('history_rates_capital_gains', bool(b))
+
     def get_fiat_address_config(self):
         return bool(self.config.get('fiat_address'))
 
@@ -276,6 +288,10 @@ class FxThread(ThreadJob):
         if rate is None:
             return Decimal('NaN')
         return Decimal(rate)
+
+    def format_amount(self, btc_balance):
+        rate = self.exchange_rate()
+        return '' if rate.is_nan() else "%s" % self.value_str(btc_balance, rate)
 
     def format_amount_and_units(self, btc_balance):
         rate = self.exchange_rate()

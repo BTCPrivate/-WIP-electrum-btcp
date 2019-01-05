@@ -31,7 +31,7 @@ from PyQt5.QtWidgets import *
 import PyQt5.QtCore as QtCore
 
 from electrum.i18n import _
-from electrum.bitcoin import NetworkConstants
+from electrum import constants
 from electrum.util import print_error
 from electrum.network import serialize_server, deserialize_server
 
@@ -58,7 +58,7 @@ class NetworkDialog(QDialog):
         self.network_updated_signal_obj.network_updated_signal.emit(event, args)
 
     def on_update(self):
-        self.nlayout.update()
+        self.nlayout.network_updated()
 
 
 
@@ -334,9 +334,8 @@ class NetworkChoiceLayout(object):
             for w in [self.autoconnect_cb, self.server_host, self.server_port, self.servers_list]:
                 w.setEnabled(False)
 
-    def update(self):
+    def network_updated(self):
         host, port, protocol, proxy_config, auto_connect = self.network.get_parameters()
-        self.server_host.setText(host)
         self.server_port.setText(port)
         self.autoconnect_cb.setChecked(auto_connect)
 
@@ -366,6 +365,10 @@ class NetworkChoiceLayout(object):
         self.split_label.setText(msg)
         self.nodes_list_widget.update(self.network)
 
+    def update(self):
+        host, port, protocol, proxy_config, auto_connect = self.network.get_parameters()
+        self.server_host.setText(host)
+
     def fill_in_proxy_settings(self):
         host, port, protocol, proxy_config, auto_connect = self.network.get_parameters()
         if not proxy_config:
@@ -393,7 +396,7 @@ class NetworkChoiceLayout(object):
     def change_protocol(self, use_ssl):
         p = 's' if use_ssl else 't'
         host = self.server_host.text()
-        pp = self.servers.get(host, NetworkConstants.DEFAULT_PORTS)
+        pp = self.servers.get(host, constants.net.DEFAULT_PORTS)
         if p not in pp.keys():
             p = list(pp.keys())[0]
         port = pp[p]
@@ -418,7 +421,7 @@ class NetworkChoiceLayout(object):
             self.change_server(str(x.text(0)), self.protocol)
 
     def change_server(self, host, protocol):
-        pp = self.servers.get(host, NetworkConstants.DEFAULT_PORTS)
+        pp = self.servers.get(host, constants.net.DEFAULT_PORTS)
         if protocol and protocol not in protocol_letters:
             protocol = None
         if protocol:

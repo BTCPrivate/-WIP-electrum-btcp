@@ -303,7 +303,7 @@ class SimpleConfig(PrintError):
 
     @impose_hard_limits_on_fee
     def depth_to_fee(self, i):
-        """Returns fee in sat/kbyte."""
+        """Returns fee in zat/kbyte."""
         target = self.depth_target(i)
         depth = 0
         for fee, s in self.mempool_fees:
@@ -348,7 +348,7 @@ class SimpleConfig(PrintError):
         pos = self.get_depth_level() if mempool else self.get_fee_level()
         fee_rate = self.fee_per_kb()
         target, tooltip = self.get_fee_text(pos, dyn, mempool, fee_rate)
-        return target + '  [%s]'%tooltip
+        return tooltip + '  [%s]'%target if dyn else target + '  [Static]'
 
     def get_fee_text(self, pos, dyn, mempool, fee_rate):
         """Returns (text, tooltip) where

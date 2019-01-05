@@ -293,7 +293,7 @@ class TxDialog(QDialog, MessageBoxMixin):
                     if _addr:
                         addr = _addr
                 if addr is None:
-                    addr = _('Unknown')
+                    addr = _('unknown')
                 cursor.insertText(addr, text_format(addr))
                 if x.get('value'):
                     cursor.insertText(format_amount(x['value']), ext)

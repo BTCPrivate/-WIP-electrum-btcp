@@ -29,7 +29,6 @@ import hmac
 import os
 import json
 
-import struct
 import ecdsa
 import pyaes
 
@@ -37,91 +36,8 @@ from .util import bfh, bh2u, to_string
 from . import version
 from .util import print_error, InvalidPassword, assert_bytes, to_bytes, inv_dict
 from . import segwit_addr
+from . import constants
 
-def read_json(filename, default):
-    path = os.path.join(os.path.dirname(__file__), filename)
-    try:
-        with open(path, 'r') as f:
-            r = json.loads(f.read())
-    except:
-        r = default
-    return r
-
-
-class NetworkConstants:
-
-    # https://github.com/z-classic/zclassic/blob/master/src/chainparams.cpp#L103
-    @classmethod
-    def set_mainnet(cls):
-        cls.TESTNET = False
-        cls.WIF_PREFIX = 0x80
-        cls.ADDRTYPE_P2PKH = [0x1C, 0xB8]
-        cls.ADDRTYPE_P2SH = [0x1C, 0xBD]
-        cls.ADDRTYPE_SHIELDED = [0x16, 0x9A]
-        cls.SEGWIT_HRP = "bc" #TODO zcl has no segwit
-        cls.GENESIS = "0007104ccda289427919efc39dc9e4d499804b7bebc22df55f8b834301260602"
-        cls.DEFAULT_PORTS = {'t': '50001', 's': '50002'}
-        cls.DEFAULT_SERVERS = read_json('servers.json', {})
-        cls.CHECKPOINTS = read_json('checkpoints.json', [])
-        cls.EQUIHASH_N = 200
-        cls.EQUIHASH_K = 9
-        cls.HEADERS_URL = "http://headers.zcl-electrum.com/blockchain_headers"
-        
-        # https://github.com/z-classic/zclassic/blob/master/src/chainparams.cpp#L234
-        cls.XPRV_HEADERS = {
-            'standard':    0x0488ade4,  # xprv
-            'p2wpkh-p2sh': 0x049d7878,  # yprv
-            'p2wsh-p2sh':  0x0295b005,  # Yprv
-            'p2wpkh':      0x04b2430c,  # zprv
-            'p2wsh':       0x02aa7a99,  # Zprv
-        }
-        cls.XPUB_HEADERS = {
-            'standard':    0x0488b21e,  # xpub
-            'p2wpkh-p2sh': 0x049d7cb2,  # ypub
-            'p2wsh-p2sh':  0x0295b43f,  # Ypub
-            'p2wpkh':      0x04b24746,  # zpub
-            'p2wsh':       0x02aa7ed3,  # Zpub
-        }
-        cls.CHUNK_SIZE = 200
-
-    @classmethod
-    def set_testnet(cls):
-        cls.TESTNET = True
-        cls.WIF_PREFIX = 0xef
-        cls.ADDRTYPE_P2PKH = [0x1D, 0x25]
-        cls.ADDRTYPE_P2SH = [0x1C, 0xBA]
-        cls.ADDRTYPE_SHIELDED = [0x16, 0xB6]
-        cls.SEGWIT_HRP = "tb" #TODO zcl has no segwit
-        cls.GENESIS = "03e1c4bb705c871bf9bfda3e74b7f8f86bff267993c215a89d5795e3708e5e1f"
-        cls.DEFAULT_PORTS = {'t': '51001', 's': '51002'}
-        cls.DEFAULT_SERVERS = read_json('servers_testnet.json', {})
-        cls.CHECKPOINTS = read_json('checkpoints_testnet.json', [])
-        cls.EQUIHASH_N = 200
-        cls.EQUIHASH_K = 9
-        
-        
-        #cls.HEADERS_URL = "http://35.224.186.7/blockchain_headers"
-
-        cls.XPRV_HEADERS = {
-            'standard':    0x04358394,  # tprv
-            'p2wpkh-p2sh': 0x044a4e28,  # uprv
-            'p2wsh-p2sh':  0x024285b5,  # Uprv
-            'p2wpkh':      0x045f18bc,  # vprv
-            'p2wsh':       0x02575048,  # Vprv
-        }
-        cls.XPUB_HEADERS = {
-            'standard':    0x043587cf,  # tpub
-            'p2wpkh-p2sh': 0x044a5262,  # upub
-            'p2wsh-p2sh':  0x024285ef,  # Upub
-            'p2wpkh':      0x045f1cf6,  # vpub
-            'p2wsh':       0x02575483,  # Vpub
-        }
-
-        cls.CHUNK_SIZE = 200
-
-
-
-NetworkConstants.set_mainnet()
 
 ################################## transactions
 
@@ -336,18 +252,26 @@ def ser_uint256(u):
         u >>= 32
     return rs
 
+# END ZCASH specific utils #
+# ######################## #
+
+
 def sha256(x):
     if isinstance(x, str):
         x = x.encode('utf8')
     return bytes(hashlib.sha256(x).digest())
 
+
 def Hash(x):
+    x = to_bytes(x, 'utf8')
     out = bytes(sha256(sha256(x)))
     return out
+
 
 hash_encode = lambda x: bh2u(x[::-1])
 hash_decode = lambda x: bfh(x)[::-1]
 hmac_sha_512 = lambda x, y: hmac.new(x, y, hashlib.sha512).digest()
+
 
 def is_new_seed(x, prefix=version.SEED_PREFIX):
     from . import mnemonic
@@ -434,16 +358,16 @@ def b58_address_to_hash160(addr):
 
 
 def hash160_to_p2pkh(h160):
-    return hash160_to_b58_address(h160, NetworkConstants.ADDRTYPE_P2PKH)
+    return hash160_to_b58_address(h160, constants.net.ADDRTYPE_P2PKH)
 
 def hash160_to_p2sh(h160):
-    return hash160_to_b58_address(h160, NetworkConstants.ADDRTYPE_P2SH)
+    return hash160_to_b58_address(h160, constants.net.ADDRTYPE_P2SH)
 
 def public_key_to_p2pkh(public_key):
     return hash160_to_p2pkh(hash_160(public_key))
 
 def hash_to_segwit_addr(h):
-    return segwit_addr.encode(NetworkConstants.SEGWIT_HRP, 0, h)
+    return segwit_addr.encode(constants.net.SEGWIT_HRP, 0, h)
 
 def public_key_to_p2wpkh(public_key):
     return hash_to_segwit_addr(hash_160(public_key))
@@ -489,7 +413,7 @@ def script_to_address(script):
     return addr
 
 def address_to_script(addr):
-    witver, witprog = segwit_addr.decode(NetworkConstants.SEGWIT_HRP, addr)
+    witver, witprog = segwit_addr.decode(constants.net.SEGWIT_HRP, addr)
     if witprog is not None:
         assert (0 <= witver <= 16)
         OP_n = witver + 0x50 if witver > 0 else 0
@@ -497,11 +421,11 @@ def address_to_script(addr):
         script += push_script(bh2u(bytes(witprog)))
         return script
     addrtype, hash_160 = b58_address_to_hash160(addr)
-    if addrtype == NetworkConstants.ADDRTYPE_P2PKH:
+    if addrtype == constants.net.ADDRTYPE_P2PKH:
         script = '76a9'                                      # op_dup, op_hash_160
         script += push_script(bh2u(hash_160))
         script += '88ac'                                     # op_equalverify, op_checksig
-    elif addrtype == NetworkConstants.ADDRTYPE_P2SH:
+    elif addrtype == constants.net.ADDRTYPE_P2SH:
         script = 'a9'                                        # op_hash_160
         script += push_script(bh2u(hash_160))
         script += '87'                                       # op_equal
@@ -568,7 +492,10 @@ def base_decode(v, length, base):
         chars = __b43chars
     long_value = 0
     for (i, c) in enumerate(v[::-1]):
-        long_value += chars.find(bytes([c])) * (base**i)
+        digit = chars.find(bytes([c]))
+        if digit == -1:
+            raise ValueError('Forbidden character {} for base {}'.format(c, base))
+        long_value += digit * (base**i)
     result = bytearray()
     while long_value >= 256:
         div, mod = divmod(long_value, 256)
@@ -588,6 +515,10 @@ def base_decode(v, length, base):
     return bytes(result)
 
 
+class InvalidChecksum(Exception):
+    pass
+
+
 def EncodeBase58Check(vchIn):
     hash = Hash(vchIn)
     return base_encode(vchIn + hash[0:4], base=58)
@@ -600,7 +531,7 @@ def DecodeBase58Check(psz):
     hash = Hash(key)
     cs32 = hash[0:4]
     if cs32 != csum:
-        return None
+        raise InvalidChecksum('expected {}, actual {}'.format(bh2u(cs32), bh2u(csum)))
     else:
         return key
 
@@ -619,9 +550,9 @@ SCRIPT_TYPES = {
 
 def serialize_privkey(secret, compressed, txin_type, internal_use=False):
     if internal_use:
-        prefix = bytes([(SCRIPT_TYPES[txin_type] + NetworkConstants.WIF_PREFIX) & 255])
+        prefix = bytes([(SCRIPT_TYPES[txin_type] + constants.net.WIF_PREFIX) & 255])
     else:
-        prefix = bytes([NetworkConstants.WIF_PREFIX])
+        prefix = bytes([constants.net.WIF_PREFIX])
     suffix = b'\01' if compressed else b''
     vchIn = prefix + secret + suffix
     base58_wif = EncodeBase58Check(vchIn)
@@ -639,15 +570,17 @@ def deserialize_privkey(key):
     if ':' in key:
         txin_type, key = key.split(sep=':', maxsplit=1)
         assert txin_type in SCRIPT_TYPES
-    vch = DecodeBase58Check(key)
-    if not vch:
-        raise BaseException("cannot deserialize", key)
+    try:
+        vch = DecodeBase58Check(key)
+    except BaseException:
+        neutered_privkey = str(key)[:3] + '..' + str(key)[-2:]
+        raise BaseException("cannot deserialize", neutered_privkey)
 
     if txin_type is None:
         # keys exported in version 3.0.x encoded script type in first byte
-        txin_type = inv_dict(SCRIPT_TYPES)[vch[0] - NetworkConstants.WIF_PREFIX]
+        txin_type = inv_dict(SCRIPT_TYPES)[vch[0] - constants.net.WIF_PREFIX]
     else:
-        assert vch[0] == NetworkConstants.WIF_PREFIX
+        assert vch[0] == constants.net.WIF_PREFIX
 
     assert len(vch) in [33, 34]
     compressed = len(vch) == 34
@@ -683,7 +616,7 @@ def address_from_private_key(sec):
 
 def is_segwit_address(addr):
     try:
-        witver, witprog = segwit_addr.decode(NetworkConstants.SEGWIT_HRP, addr)
+        witver, witprog = segwit_addr.decode(constants.net.SEGWIT_HRP, addr)
     except Exception as e:
         return False
     return witprog is not None
@@ -693,7 +626,7 @@ def is_b58_address(addr):
         addrtype, h = b58_address_to_hash160(addr)
     except Exception as e:
         return False
-    if addrtype not in [NetworkConstants.ADDRTYPE_P2PKH, NetworkConstants.ADDRTYPE_P2SH]:
+    if addrtype not in [constants.net.ADDRTYPE_P2PKH, constants.net.ADDRTYPE_P2SH]:
         return False
     return addr == hash160_to_b58_address(h, addrtype)
 
@@ -732,7 +665,7 @@ from ecdsa.util import string_to_number, number_to_string
 
 def msg_magic(message):
     length = bfh(var_int(len(message)))
-    return b"\x19Zcash Signed Message:\n" + length + message
+    return b"\x19Zclassic Signed Message:\n" + length + message
 
 
 def verify_message(address, sig, message):
@@ -1005,25 +938,35 @@ def _CKD_pub(cK, c, s):
     return cK_n, c_n
 
 
-def xprv_header(xtype):
-    return bfh("%08x" % NetworkConstants.XPRV_HEADERS[xtype])
+def xprv_header(xtype, *, net=None):
+    if net is None:
+        net = constants.net
+    return bfh("%08x" % net.XPRV_HEADERS[xtype])
 
 
-def xpub_header(xtype):
-    return bfh("%08x" % NetworkConstants.XPUB_HEADERS[xtype])
+def xpub_header(xtype, *, net=None):
+    if net is None:
+        net = constants.net
+    return bfh("%08x" % net.XPUB_HEADERS[xtype])
 
 
-def serialize_xprv(xtype, c, k, depth=0, fingerprint=b'\x00'*4, child_number=b'\x00'*4):
-    xprv = xprv_header(xtype) + bytes([depth]) + fingerprint + child_number + c + bytes([0]) + k
+def serialize_xprv(xtype, c, k, depth=0, fingerprint=b'\x00'*4,
+                   child_number=b'\x00'*4, *, net=None):
+    xprv = xprv_header(xtype, net=net) \
+           + bytes([depth]) + fingerprint + child_number + c + bytes([0]) + k
     return EncodeBase58Check(xprv)
 
 
-def serialize_xpub(xtype, c, cK, depth=0, fingerprint=b'\x00'*4, child_number=b'\x00'*4):
-    xpub = xpub_header(xtype) + bytes([depth]) + fingerprint + child_number + c + cK
+def serialize_xpub(xtype, c, cK, depth=0, fingerprint=b'\x00'*4,
+                   child_number=b'\x00'*4, *, net=None):
+    xpub = xpub_header(xtype, net=net) \
+           + bytes([depth]) + fingerprint + child_number + c + cK
     return EncodeBase58Check(xpub)
 
 
-def deserialize_xkey(xkey, prv):
+def deserialize_xkey(xkey, prv, *, net=None):
+    if net is None:
+        net = constants.net
     xkey = DecodeBase58Check(xkey)
     if len(xkey) != 78:
         raise BaseException('Invalid length')
@@ -1032,7 +975,7 @@ def deserialize_xkey(xkey, prv):
     child_number = xkey[9:13]
     c = xkey[13:13+32]
     header = int('0x' + bh2u(xkey[0:4]), 16)
-    headers = NetworkConstants.XPRV_HEADERS if prv else NetworkConstants.XPUB_HEADERS
+    headers = net.XPRV_HEADERS if prv else net.XPUB_HEADERS
     if header not in headers.values():
         raise BaseException('Invalid xpub format', hex(header))
     xtype = list(headers.keys())[list(headers.values()).index(header)]
@@ -1041,11 +984,11 @@ def deserialize_xkey(xkey, prv):
     return xtype, depth, fingerprint, child_number, c, K_or_k
 
 
-def deserialize_xpub(xkey):
-    return deserialize_xkey(xkey, False)
+def deserialize_xpub(xkey, *, net=None):
+    return deserialize_xkey(xkey, False, net=net)
 
-def deserialize_xprv(xkey):
-    return deserialize_xkey(xkey, True)
+def deserialize_xprv(xkey, *, net=None):
+    return deserialize_xkey(xkey, True, net=net)
 
 def xpub_type(x):
     return deserialize_xpub(x)[0]
